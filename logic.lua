@@ -345,7 +345,4 @@ State.Functions.resetKills = function()
     getgenv().BD_DeadPlayers = {}; State.deadPlayers = {}
 end
 
-game:BindToClose(function()
-    State.Functions.restoreAllHitboxes()
-    for _, v in pairs(TargetHUD) do v:Remove() end
-end)
+
