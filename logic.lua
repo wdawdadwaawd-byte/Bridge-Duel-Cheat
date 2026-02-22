@@ -345,17 +345,3 @@ State.Functions.resetKills = function()
     getgenv().BD_DeadPlayers = {}; State.deadPlayers = {}
 end
 
--- ... (üstteki tüm kodlar aynı kalacak)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then State.isHoldingMouse1 = false end
-    if input.UserInputType == Enum.UserInputType.Keyboard then State.keysPressed[input.KeyCode] = nil end
-end)
-
-State.Functions.resetKills = function()
-    getgenv().BD_KillCount = 0; State.killCount = 0
-    getgenv().BD_DeadPlayers = {}; State.deadPlayers = {}
-end
-
--- BindToClose SİLİNDİ, hata vermeyecek.
-print("✅ Logic yüklendi, BindToClose hatası giderildi.")
