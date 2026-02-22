@@ -1,53 +1,78 @@
--- ===== MAIN BOOTSTRAPPER (BAŞLATICI) =====
-local repo_url = "https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/"
+-- Bridge Duel Cheat v2 - Main Loader
+print("🔥 Bridge Duel Cheat v2 Yükleniyor...")
 
--- Ortak Hafıza (State): logic.lua ve ui.lua bu değişkenleri ortak kullanacak
-getgenv().BD_KillCount = getgenv().BD_KillCount or 0
-getgenv().BD_DeadPlayers = getgenv().BD_DeadPlayers or {}
-getgenv().BD_LastHealths = getgenv().BD_LastHealths or {}
+-- Diğer modülleri GitHub'dan yükle
+loadstring(game:HttpGet("https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/variables.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/helpers.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/hitbox.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/killcounter.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/targethud.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/combat.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/esp.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/fly.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/autoclick.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/wdawdadwaawd-byte/Bridge-Duel-Cheat/main/ui.lua"))()
 
-getgenv().BD_State = {
-    -- Temel Değişkenler
-    espEnabled = false,
-    flyEnabled = false,
-    flySpeed = 38,
-    HITBOX_EXPAND_ENABLED = true,
-    ROOTPART_SIZE_MULTIPLIER = 10,
-    HEAD_SIZE_MULTIPLIER = 15,
-    AUTOCLICK_ENABLED = false,
-    AUTOCLICK_DELAY = 0.055,
-    isHoldingMouse1 = false,
-    KILL_AURA_ENABLED = false,
-    KILL_AURA_RANGE = 20,
-    currentTarget = nil,
-    
-    -- Advanced Combat
-    STRAFE_ENABLED = false,
-    STRAFE_SPEED = 5,
-    STRAFE_RADIUS = 10,
-    REACH_ENABLED = false,
-    REACH_SIZE = 15,
-    AUTO_BLOCK_ENABLED = false,
-    SPIN_ENABLED = false,
-    INFINITE_JUMP_ENABLED = false,
-    
-    -- Tablolar
-    originalSizes = {},
-    keysPressed = {},
-    espObjects = {},
-    
-    -- Sayaçlar
-    killCount = getgenv().BD_KillCount,
-    deadPlayers = getgenv().BD_DeadPlayers,
-    
-    -- Fonksiyonları UI'dan çağırmak için
-    Functions = {} 
-}
+-- Hitbox ve Reach döngüsü (main'de başlat)
+task.spawn(function()
+    while true do
+        if HITBOX_EXPAND_ENABLED then
+            expandHitboxes()
+        else
+            restoreAllHitboxes()
+        end
+        if REACH_ENABLED then
+            applyReach()
+        end
+        task.wait(0.05)
+    end
+end)
 
-print("⏳ Logic (Motor) yükleniyor...")
-loadstring(game:HttpGet(repo_url .. "logic.lua", true))()
+-- RenderStepped (spin, kill aura, strafe, HUD update)
+RunService.RenderStepped:Connect(function()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then
+        updateTargetHUD(nil)
+        return
+    end
+    -- SPINBOT
+    if SPIN_ENABLED and isHoldingMouse1 then
+        local tool = char:FindFirstChildOfClass("Tool")
+        if tool then
+            spinAngle = spinAngle + 0.3
+            tool.Grip = CFrame.new(0, 0, 0) * CFrame.Angles(0, spinAngle, math.rad(90))
+        end
+    elseif not isHoldingMouse1 then
+        spinAngle = 0
+    end
+    -- KILL AURA & TARGET STRAFE
+    if KILL_AURA_ENABLED then
+        currentTarget = getClosestPlayer()
+        if currentTarget and currentTarget.Character then
+            local root = char:FindFirstChild("HumanoidRootPart")
+            local targetRoot = currentTarget.Character:FindFirstChild("HumanoidRootPart")
+            if root and targetRoot then
+                if STRAFE_ENABLED then
+                    strafeAngle = strafeAngle + math.rad(STRAFE_SPEED)
+                    local offsetX = math.cos(strafeAngle) * STRAFE_RADIUS
+                    local offsetZ = math.sin(strafeAngle) * STRAFE_RADIUS
+                    local strafePosition = targetRoot.Position + Vector3.new(offsetX, 0, offsetZ)
+                    root.CFrame = CFrame.lookAt(Vector3.new(strafePosition.X, root.Position.Y, strafePosition.Z), Vector3.new(targetRoot.Position.X, root.Position.Y, targetRoot.Position.Z))
+                else
+                    root.CFrame = CFrame.lookAt(root.Position, Vector3.new(targetRoot.Position.X, root.Position.Y, targetRoot.Position.Z))
+                end
+            end
+        end
+    else
+        currentTarget = nil
+    end
+    updateTargetHUD(currentTarget)
+end)
 
-print("⏳ UI (Arayüz) yükleniyor...")
-loadstring(game:HttpGet(repo_url .. "ui.lua", true))()
+-- BindToClose (cleanup)
+game:BindToClose(function()
+    restoreAllHitboxes()
+    for _, v in pairs(TargetHUD) do v:Remove() end
+end)
 
-print("🔥 Bridge Duel Cheat Başarıyla Başlatıldı!")
+print("🔥 Bridge Duel Cheat v2 Yüklendi - Kill Aura Auto Attack Aktif!")
