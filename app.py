@@ -1,10 +1,9 @@
 import tkinter as tk
 
 root = tk.Tk()
-root.title("App v1.0")
-root.geometry("300x150")
+root.title("TEST OK")
+root.geometry("200x100")
 
-label = tk.Label(root, text="Merhaba dayı 😎\nBu app.py çalışıyor", font=("Arial", 12))
-label.pack(expand=True)
+tk.Label(root, text="app.py çalışıyor 😎").pack(expand=True)
 
 root.mainloop()
