@@ -70,7 +70,7 @@ class SMSOnayChecker:
 def start_app():
     checker = SMSOnayChecker()
     root = tk.Tk()
-    root.title("SMSOnay Checker - WASD POWER")
+    root.title("https://smsonay.app/panel/ajax/login Checker - WASD POWER")
     root.geometry("900x650")
     root.configure(bg="#050505")
 
